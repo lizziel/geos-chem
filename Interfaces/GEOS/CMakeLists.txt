@@ -1,81 +1,21 @@
-esma_set_this ()
+esma_set_this(OVERRIDE GEOSCHEMchem_GridComp)
 
-set (alldirs
-  )
-
-set (src_directories
-   ${CMAKE_CURRENT_SOURCE_DIR}
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/Headers
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/History
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosUtil
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/NcdfUtil
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/ISOROPIA
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/KPP/Standard
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GIGC
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/ObsPack
-  )
-
-include_directories (${CMAKE_CURRENT_SOURCE_DIR}/gc_column/Headers)
-
-set (srcs)
-foreach (dir ${src_directories})
-  file (GLOB tmpsrcs ${dir}/*.[fF] ${dir}/*.[fF]90 ${dir}/*.c)
-  list (APPEND srcs ${tmpsrcs})
-endforeach()
-
-list (REMOVE_ITEM srcs
-   # this one is moved to HEMCO
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosUtil/regrid_a2a_mod.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/NcdfUtil/charpak_mod.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/Headers/charpak_mod.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/NcdfUtil/julday_mod.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosUtil/julday_mod.F
-
-   # not sure about the rest
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/main.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/tpcore_fvdas_mod.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/tpcore_geos57_window_mod.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/tpcore_geos5_window_mod.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/transport_mod.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/rrtmg_rad_transfer_mod.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/tomas_mod.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/exchange_mod.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/get_met_mod.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/flexgrid_read_mod.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/aero_drydep.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/exchange_mod.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GeosCore/YuIMN_Code.F
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GIGC/gigc_manualexports_mod.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GIGC/GIGC_GridCompMod.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GIGC/Chem_GridCompMod.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GIGC/GEOS_ctmEnvGridComp.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/GIGC/GEOSChem.F90
-   ${CMAKE_CURRENT_SOURCE_DIR}/gc_column/Headers/inquireMod.F90
-   )
-
-if (CMAKE_Fortran_COMPILER_ID MATCHES Intel)
-   if (CMAKE_BUILD_TYPE MATCHES Release)
-      set (CMAKE_Fortran_FLAGS_RELEASE "")
-      foreach (src ${srcs})
-         if (${src} MATCHES GEOSCHEMchem_GridCompMod.F90)
-            set_source_files_properties (${src} PROPERTIES COMPILE_FLAGS "${FOPT2} ${GEOS_Fortran_Release_FPE_Flags} ${ALIGNCOM}")
-         else ()
-            set_source_files_properties (${src} PROPERTIES COMPILE_FLAGS "${GEOS_Fortran_FLAGS_RELEASE} ${EXTENDED_SOURCE}")
-         endif ()
-      endforeach ()
-   endif ()
-endif ()
+set(srcs
+    GEOSCHEMchem_GridCompMod.F90
+    )
+set_source_files_properties (${src} PROPERTIES COMPILE_FLAGS "${FOPT2} ${GEOS_Fortran_Release_FPE_Flags} ${ALIGNCOM}")
 
 esma_add_library (${this}
    SRCS ${srcs}
-   DEPENDENCIES MAPL MAPL_cfio_r4 Chem_Base Chem_Shared
+   DEPENDENCIES MAPL MAPL_cfio_r4 Chem_Base Chem_Shared GCHP
+   GeosCore GeosRad GeosUtil Hg History Isorropia NcdfUtil ObsPack
+   KPPFirstPass_Standard KPP_Standard KPPFirstPass_Tropchem KPP_Tropchem KPPFirstPass_SOA_SVPOA KPP_SOA_SVPOA
    )
 
 target_include_directories (${this} PUBLIC ${INC_ESMF} ${INC_NETCDF})
 target_link_libraries(${this} PUBLIC HCOI_MAPL_ESMF)
 
-target_compile_definitions(${this} PRIVATE ESMF_ DEVEL NO_BPCH UCX 
+target_compile_definitions(${this} PRIVATE ESMF_ DEVEL NO_BPCH UCX
    EXTERNAL_GRID EXTERNAL_FORCING GEOS_FP USE_REAL8 USE_TEND NC_DIAG DISCOVER MODEL_GEOS)
 
 if (CMAKE_Fortran_COMPILER_ID MATCHES "Intel")
