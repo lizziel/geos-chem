@@ -25,9 +25,7 @@ MODULE INPUT_MOD
 !
 ! !PUBLIC MEMBER FUNCTIONS:
 !
-#if !defined ( MODEL_CESM )
   PUBLIC  :: Read_Input_File
-#endif
   PUBLIC  :: Do_Error_Checks
   PUBLIC  :: Validate_Directories
 !
@@ -47,7 +45,6 @@ MODULE INPUT_MOD
 
 CONTAINS
 !EOC
-#if !defined( MODEL_CESM )
 !------------------------------------------------------------------------------
 !                  GEOS-Chem Global Chemical Transport Model                  !
 !------------------------------------------------------------------------------
@@ -150,8 +147,8 @@ CONTAINS
        ! (4) AEROSOL, CHEMISTRY, TRANSPORT, CONVECTION,
        !      and DEPOSITION menus (in any order) should follow.
        ! (5) Diagnostic menus, including OUTPUT, DIAGNOSTIC,
-       !      PLANEFLIGHT, ND48, ND49, ND50, ND51, and PROD_LOSS
-       !      menus (in any order) should follow next.
+       !      PLANEFLIGHT, ND51, and ND51b menus (in any order)
+       !      should follow next.
        ! (6) The following menus have no other restriction and
        !      can be placed anywhere (but by convention we will
        !      place them after the diagnostic menu): NESTED GRID
@@ -392,7 +389,6 @@ CONTAINS
 
   END SUBROUTINE READ_INPUT_FILE
 !EOC
-#endif
 !------------------------------------------------------------------------------
 !                  GEOS-Chem Global Chemical Transport Model                  !
 !------------------------------------------------------------------------------
@@ -708,37 +704,33 @@ CONTAINS
 
     ! Error check simulation name
     Sim = To_UpperCase( TRIM( Input_Opt%SimulationName ) )
-    IF ( TRIM(Sim) /= 'AEROSOL'          .and. &
-         TRIM(Sim) /= 'CH4'              .and. &
-         TRIM(Sim) /= 'CO2'              .and. &
-         TRIM(Sim) /= 'FULLCHEM'         .and. &
-         TRIM(Sim) /= 'HG'               .and. &
-         TRIM(Sim) /= 'POPS'             .and. &
-         TRIM(Sim) /= 'TRANSPORTTRACERS' .and. &
-         TRIM(Sim) /= 'TAGCO'            .and. &
-         TRIM(Sim) /= 'TAGCH4'           .and. &
-         TRIM(Sim) /= 'TAGHG'            .and. &
-         TRIM(Sim) /= 'TAGO3'            ) THEN
-       ErrMsg = Trim( Input_Opt%SimulationName) // ' is not a'      // &
-                ' valid simulation. Supported simulations are:'     // &
-                ' aerosol, CH4, CO2, fullchem, Hg, POPs,'           // &
+    IF ( TRIM(Sim) /= 'AEROSOL' .and. TRIM(Sim) /= 'CH4'               .and. &
+         TRIM(Sim) /= 'CO2'     .and. TRIM(Sim) /= 'FULLCHEM'          .and. &
+         TRIM(Sim) /= 'HG'      .and. TRIM(Sim) /= 'METALS'            .and. &
+         TRIM(Sim) /= 'POPS'    .and. TRIM(Sim) /= 'TRANSPORTTRACERS'  .and. &
+         TRIM(Sim) /= 'TAGCO'   .and. TRIM(Sim) /= 'TAGCH4'            .and. &
+         TRIM(Sim) /= 'TAGHG'   .and. TRIM(Sim) /= 'TAGO3'           ) THEN
+       ErrMsg = Trim( Input_Opt%SimulationName) // ' is not a'            // &
+                ' valid simulation. Supported simulations are:'           // &
+                ' aerosol, CH4, CO2, fullchem, Hg, POPs,'                 // &
                 ' TransportTracers, TagCO, TagCH4, TagHg, or TagO3.'
        CALL GC_Error( ErrMsg, RC, ThisLoc )
        RETURN
     ENDIF
 
     ! Set simulation type flags in Input_Opt
-    Input_Opt%ITS_A_CH4_SIM      = ( TRIM(Sim) == 'CH4'              .or. &
-                                     TRIM(Sim) == 'TAGCH4'           )
-    Input_Opt%ITS_A_CO2_SIM      = ( TRIM(Sim) == 'CO2'              )
-    Input_Opt%ITS_A_FULLCHEM_SIM = ( TRIM(Sim) == 'FULLCHEM'         )
-    Input_Opt%ITS_A_MERCURY_SIM  = ( TRIM(Sim) == 'HG'               .or. &
-                                     TRIM(Sim) == 'TAGHG'            )
-    Input_Opt%ITS_A_POPS_SIM     = ( TRIM(Sim) == 'POPS'             )
-    Input_Opt%ITS_A_RnPbBe_SIM   = ( TRIM(Sim) == 'TRANSPORTTRACERS' )
-    Input_Opt%ITS_A_TAGO3_SIM    = ( TRIM(Sim) == 'TAGO3'            )
-    Input_Opt%ITS_A_TAGCO_SIM    = ( TRIM(Sim) == 'TAGCO'            )
-    Input_Opt%ITS_AN_AEROSOL_SIM = ( TRIM(Sim) == 'AEROSOL'          )
+    Input_Opt%ITS_A_CH4_SIM        = ( TRIM(Sim) == 'CH4'              .or.  &
+                                       TRIM(Sim) == 'TAGCH4'                )
+    Input_Opt%ITS_A_CO2_SIM        = ( TRIM(Sim) == 'CO2'                   )
+    Input_Opt%ITS_A_FULLCHEM_SIM   = ( TRIM(Sim) == 'FULLCHEM'              )
+    Input_Opt%ITS_A_MERCURY_SIM    = ( TRIM(Sim) == 'HG'               .or.  &
+                                       TRIM(Sim) == 'TAGHG'                 )
+    Input_Opt%ITS_A_POPS_SIM       = ( TRIM(Sim) == 'POPS'                  )
+    Input_Opt%ITS_A_RnPbBe_SIM     = ( TRIM(Sim) == 'TRANSPORTTRACERS'      )
+    Input_Opt%ITS_A_TAGO3_SIM      = ( TRIM(Sim) == 'TAGO3'                 )
+    Input_Opt%ITS_A_TAGCO_SIM      = ( TRIM(Sim) == 'TAGCO'                 )
+    Input_Opt%ITS_AN_AEROSOL_SIM   = ( TRIM(Sim) == 'AEROSOL'               )
+    Input_Opt%ITS_A_TRACEMETAL_SIM = ( TRIM(SIM) == 'METALS'                )
 
     !-----------------------------------------------------------------
     ! Species database file
@@ -4153,7 +4145,7 @@ CONTAINS
                         TRIM( Input_Opt%ND51_FILE )
        WRITE( 6, 100 ) 'Output as HDF?              : ', &
                         Input_Opt%LND51_HDF
-       WRITE( 6, 120 ) 'ND41 timeseries tracers     : ',  &
+       WRITE( 6, 120 ) 'ND51 timeseries tracers     : ',  &
                         ( Input_Opt%ND51_TRACERS(N), N=1, &
                           Input_Opt%N_ND51 )
        WRITE( 6, 140 ) 'ND51 hour to write to disk  : ', &
@@ -4343,7 +4335,7 @@ CONTAINS
                         TRIM( Input_Opt%ND51b_FILE )
        WRITE( 6, 100 ) 'Output as HDF?               : ', &
                         Input_Opt%LND51b_HDF
-       WRITE( 6, 120 ) 'ND41 timeseries tracers      : ',  &
+       WRITE( 6, 120 ) 'ND51b timeseries tracers      : ',  &
                         ( Input_Opt%ND51b_TRACERS(N), N=1, &
                           Input_Opt%N_ND51b )
        WRITE( 6, 140 ) 'ND51b hour to write to disk  : ', &
@@ -5425,7 +5417,7 @@ CONTAINS
        TS_DYN  = TS_DYN  * -1
        TS_RAD  = TS_RAD  * -1
     endif
-         
+
 
     ! NUNIT is time step in minutes for unit conversion
     TS_UNIT = -1

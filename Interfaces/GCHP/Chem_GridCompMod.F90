@@ -6078,6 +6078,13 @@ CONTAINS
        WRITE(*,*) 'External data is on GEOS levels: ',OnGeosLev
        WRITE(*,*) 'Only overwrite above tropopause: ',AboveTroppOnly
        WRITE(*,*) 'Maximum valid level (will be used above that level): ',TopLev
+       WRITE(*,*) 'Maximum valid level (will be used above that level): ',TopLev
+    ENDIF
+
+    ! Initialize array to missing values 
+    IF ( UniformIfMissing >= 0.0 ) THEN
+        State_Chm%Species(:,:,:,:) = UniformIfMissing 
+        IF ( am_I_Root ) WRITE(*,*) 'All species initialized to ',UniformIfMissing
     ENDIF
 
     ! Initialize array to missing values 

@@ -5037,7 +5037,6 @@ CONTAINS
             Ptr2Data       = State_Diag%AirMassColumnFull,                   &
             archiveData    = State_Diag%Archive_AirMassColumnFull,           &
             diagId         = diagId,                                         &
-            forceDefine    = found,                                          &
             RC             = RC                                             )
 
        IF ( RC /= GC_SUCCESS ) THEN
@@ -5057,7 +5056,6 @@ CONTAINS
             Ptr2Data       = State_Diag%AirMassColumnTrop,                   &
             archiveData    = State_Diag%Archive_AirMassColumnTrop,           &
             diagId         = diagId,                                         &
-            forceDefine    = found,                                          &
             RC             = RC                                             )
 
        IF ( RC /= GC_SUCCESS ) THEN
@@ -5080,7 +5078,6 @@ CONTAINS
             Ptr2Data       = State_Diag%CH4emission,                         &
             archiveData    = State_Diag%Archive_CH4emission,                 &
             diagId         = diagId,                                         &
-            forceDefine    = found,                                          &
             RC             = RC                                             )
 
        IF ( RC /= GC_SUCCESS ) THEN
@@ -5103,7 +5100,6 @@ CONTAINS
             Ptr2Data       = State_Diag%CH4massColumnFull,                   &
             archiveData    = State_Diag%Archive_CH4massColumnFull,           &
             diagId         = diagId,                                         &
-            forceDefine    = found,                                          &
             RC             = RC                                             )
 
        IF ( RC /= GC_SUCCESS ) THEN
@@ -5123,7 +5119,6 @@ CONTAINS
             Ptr2Data       = State_Diag%CH4massColumnTrop,                   &
             archiveData    = State_Diag%Archive_CH4massColumnTrop,           &
             diagId         = diagId,                                         &
-            forceDefine    = found,                                          &
             RC             = RC                                             )
 
        IF ( RC /= GC_SUCCESS ) THEN
@@ -5146,7 +5141,6 @@ CONTAINS
             Ptr2Data       = State_Diag%OHwgtByAirMassColumnFull,            &
             archiveData    = State_Diag%Archive_OHwgtByAirMassColumnFull,    &
             diagId         = diagId,                                         &
-            forceDefine    = found,                                          &
             RC             = RC                                             )
 
        IF ( RC /= GC_SUCCESS ) THEN
@@ -5166,7 +5160,6 @@ CONTAINS
             Ptr2Data       = State_Diag%OHwgtByAirMassColumnTrop,            &
             archiveData    = State_Diag%Archive_OHwgtByAirMassColumnTrop,    &
             diagId         = diagId,                                         &
-            forceDefine    = found,                                          &
             RC             = RC                                             )
 
        IF ( RC /= GC_SUCCESS ) THEN
@@ -5189,7 +5182,6 @@ CONTAINS
             Ptr2Data       = State_Diag%LossOHbyCH4columnTrop,               &
             archiveData    = State_Diag%Archive_LossOHbyCH4columnTrop,       &
             diagId         = diagId,                                         &
-            forceDefine    = found,                                          &
             RC             = RC                                             )
 
        IF ( RC /= GC_SUCCESS ) THEN
@@ -5212,7 +5204,6 @@ CONTAINS
             Ptr2Data       = State_Diag%LossOHbyMCFcolumnTrop,               &
             archiveData    = State_Diag%Archive_LossOHbyMCFcolumnTrop,       &
             diagId         = diagId,                                         &
-            forceDefine    = found,                                          &
             RC             = RC                                             )
 
        IF ( RC /= GC_SUCCESS ) THEN
