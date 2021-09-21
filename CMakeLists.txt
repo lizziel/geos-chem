@@ -38,6 +38,9 @@ if(NOT TARGET GEOSChemBuildProperties)
     add_library(GEOSChemBuildProperties INTERFACE)
 endif()
 
+# Enable OpenMP
+target_link_libraries(${this} PRIVATE OpenMP::OpenMP_Fortran)
+
 #-----------------------------------------------------------------------------
 # Add all the subdirectories.
 # Each subdirectory specifies how it should be built.
