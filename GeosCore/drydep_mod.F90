@@ -36,12 +36,14 @@ MODULE DRYDEP_MOD
 #if defined( MODEL_CESM )
   PUBLIC :: UPDATE_DRYDEPFREQ
 #else
-
 !
 ! !PRIVATE MEMBER FUNCTIONS:
 !
   PRIVATE :: UPDATE_DRYDEPFREQ
 #endif
+!
+! !PRIVATE MEMBER FUNCTIONS:
+!
 !
 ! !PUBLIC DATA MEMBERS:
 !
@@ -236,6 +238,7 @@ CONTAINS
     USE State_Met_Mod,      ONLY : MetState
     USE Time_Mod,           ONLY : Get_Ts_Chem
     USE UnitConv_Mod
+    USE ErrCode_Mod
 !
 ! !INPUT PARAMETERS:
 !
@@ -278,6 +281,9 @@ CONTAINS
     REAL(f8)           :: DVZ, THIK
     CHARACTER(LEN=255) :: ErrMsg,  ThisLoc
 
+    ! Objects
+    TYPE(Species), POINTER :: SpcInfo
+
     ! Arrays
     REAL(f8) :: CZ1   (State_Grid%NX,State_Grid%NY) ! Midpt ht of 1st level [m]
     REAL(f8) :: TC0   (State_Grid%NX,State_Grid%NY) ! Grid box sfc temp [K]
@@ -303,6 +309,8 @@ CONTAINS
     ErrMsg   = ''
     ThisLoc  = ' -> at Do_DryDep  (in module GeosCore/drydep_mod.F90)'
 
+    SpcInfo => NULL()
+
     ! Call METERO to obtain meteorological fields (all 1-D arrays)
     ! Added sfc pressure as PRESSU and 10m windspeed as W10
     !  (jaegle 5/11/11, mpayer 1/10/12)
@@ -326,133 +334,41 @@ CONTAINS
     ENDIF
 
 #if !defined( MODEL_CESM )
-    ! Call UPDATE_DRYDEPFREQ to update dry deposition frequencies [s-1]
-    ! from dry deposition velocities [m/s].
-    CALL UPDATE_DRYDEPFREQ( Input_Opt, State_Chm, State_Diag, State_Grid, &
-                           State_Met, RC )
-
-    ! Trap potential errors
-    IF ( RC /= GC_SUCCESS ) THEN
-       ErrMsg = 'Error encountered in call to "UPDATE_DRYDEPFREQ!'
-       CALL GC_Error( ErrMsg, RC, ThisLoc )
-       RETURN
-    ENDIF
-#endif
-
-    !### Debug
-    IF ( Input_Opt%LPRT .and. Input_Opt%amIRoot ) THEN
-       CALL DEBUG_MSG( '### DO_DRYDEP: after dry dep' )
-    ENDIF
-
-  END SUBROUTINE DO_DRYDEP
-!EOC
-!------------------------------------------------------------------------------
-!                  GEOS-Chem Global Chemical Transport Model                  !
-!------------------------------------------------------------------------------
-!BOP
-!
-! !IROUTINE: update_DryDepFreq
-!
-! !DESCRIPTION: Subroutine UPDATE\_DRYDEPFREQ updates dry deposition 
-! frequencies from dry deposition velocities
-!\\
-!\\
-! !INTERFACE:
-!
-  SUBROUTINE UPDATE_DRYDEPFREQ( Input_Opt, State_Chm, State_Diag, State_Grid, &
-                               State_Met, RC )
-!
-! !USES:
-!
-    USE ErrCode_Mod
-    USE Input_Opt_Mod,      ONLY : OptInput
-    USE Species_Mod,        ONLY : Species
-    USE State_Chm_Mod,      ONLY : ChmState
-    USE State_Diag_Mod,     ONLY : DgnState
-    USE State_Grid_Mod,     ONLY : GrdState
-    USE State_Met_Mod,      ONLY : MetState
-!
-! !INPUT PARAMETERS:
-!
-    TYPE(OptInput), INTENT(IN)    :: Input_Opt   ! Input Options object
-    TYPE(GrdState), INTENT(IN)    :: State_Grid  ! Grid State object
-    TYPE(MetState), INTENT(IN)    :: State_Met   ! Meteorology State object
-!
-! !INPUT/OUTPUT PARAMETERS:
-!
-    TYPE(ChmState), INTENT(INOUT) :: State_Chm   ! Chemistry State object
-    TYPE(DgnState), INTENT(INOUT) :: State_Diag  ! Diagnostics State object
-!
-! !OUTPUT PARAMETERS:
-!
-    INTEGER,        INTENT(OUT)   :: RC          ! Success or failure?
-!
-!
-! !REMARKS:
-!  02 Mar 2020 - T. M. Fritz - Separate DO_DRYDEP into two calls. The first
-!                              call updates dry deposition velocities. The
-!                              second call computes dry deposition frequencies.
-!  See https://github.com/geoschem/geos-chem for complete history
-!EOP
-!------------------------------------------------------------------------------
-!BOC
-!
-! !LOCAL VARIABLES:
-!
-    ! Scalars
-    INTEGER            :: I,   J,   L,   D,   N,  NDVZ,  A, S
-    REAL(f8)           :: DVZ, THIK
-    CHARACTER(LEN=255) :: ErrMsg,  ThisLoc
-
-    ! Objects
-    TYPE(Species), POINTER :: SpcInfo
-
-    !=================================================================
-    ! UPDATE_DRYDEPFREQ begins here!
-    !=================================================================
-
-    ! Assume success
-    RC = GC_SUCCESS
-
-    ! Initialize
-    SpcInfo => NULL()
-
     !=================================================================
     ! Compute dry deposition frequencies; archive diagnostics
     !=================================================================
     !$OMP PARALLEL DO                                           &
     !$OMP DEFAULT( SHARED                                     ) &
     !$OMP PRIVATE( I, J, THIK, D, N, NDVZ, DVZ, SpcInfo, S, A )
-    DO J = 1, State_Grid%NY
-    DO I = 1, State_Grid%NX
+    DO D = 1, State_Chm%nDryDep 
 
-       ! THIK = thickness of surface layer [m]
-       THIK   = State_Met%BXHEIGHT(I,J,1)
+       ! GEOS-CHEM species number
+       N = State_Chm%Map_DryDep(D)
 
-       ! Now we calculate drydep throughout the entire PBL.
-       ! Make sure that the PBL depth is greater than or equal
-       ! to the thickness of the 1st layer (rjp, bmy, 7/21/03)
-       ! Add option for non-local PBL mixing scheme: THIK must
-       ! be the first box height. (Lin, 03/31/09)
-       ! Now use PBL_DRYDEP instead of LNLPBL (ckeller, 3/5/15).
-       IF (Input_Opt%PBL_DRYDEP) THIK = MAX( State_Met%PBL_TOP_m(I,J), THIK )
+       ! Get info about this species from the database
+       SpcInfo => State_Chm%SpcData(N)%Info
 
-       ! Loop over drydep species
-       DO D = 1, State_Chm%nDryDep
+       ! Get the "DryAltID" index, that is used to archive species
+       ! concentrations at a user-defined altitude above the surface
+       A = SpcInfo%DryAltID
 
-          ! GEOS-CHEM species number
-          N = State_Chm%Map_DryDep(D)
+       ! Index of drydep species in the State_Chm%DryDepVel array
+       ! as passed back from subroutine DEPVEL
+       NDVZ = NDVZIND(D)
 
-          ! Get info about this species from the database
-          SpcInfo => State_Chm%SpcData(N)%Info
+       DO J = 1, State_Grid%NY
+       DO I = 1, State_Grid%NX
 
-          ! Get the "DryAltID" index, that is used to archive species
-          ! concentrations at a user-defined altitude above the surface
-          A = SpcInfo%DryAltID
+          ! THIK = thickness of surface layer [m]
+          THIK   = State_Met%BXHEIGHT(I,J,1)
 
-          ! Index of drydep species in the State_Chm%DryDepVel array
-          ! as passed back from subroutine DEPVEL
-          NDVZ = NDVZIND(D)
+          ! Now we calculate drydep throughout the entire PBL.
+          ! Make sure that the PBL depth is greater than or equal
+          ! to the thickness of the 1st layer (rjp, bmy, 7/21/03)
+          ! Add option for non-local PBL mixing scheme: THIK must
+          ! be the first box height. (Lin, 03/31/09)
+          ! Now use PBL_DRYDEP instead of LNLPBL (ckeller, 3/5/15).
+          IF (Input_Opt%PBL_DRYDEP) THIK = MAX( State_Met%PBL_TOP_m(I,J), THIK )
 
           ! Dry deposition velocity [cm/s]
           DVZ = State_Chm%DryDepVel(I,J,NDVZ) * 100.e+0_f8
@@ -576,30 +492,50 @@ CONTAINS
           ! Dry deposition frequency [1/s]
           State_Chm%DryDepFreq(I,J,D) = State_Chm%DryDepVel(I,J,NDVZ) / THIK
 
-#if !defined( MODEL_CESM )
-          ! Archive dry dep velocity for diagnostics in [cm/s]
-          IF ( State_Diag%Archive_DryDepVel ) THEN
-             S = State_Diag%Map_DryDepVel%id2slot(D)
-             IF ( S > 0 ) THEN 
-                State_Diag%DryDepVel(I,J,S) = DVZ
-             ENDIF
-          ENDIF
-#endif
-          
-          ! Archive dry dep velocity [cm/s] only for those species
-          ! that are requested at a given altitude (e.g. 10m)
-          IF ( State_Diag%Archive_DryDepVelForALT1 ) THEN
-             IF ( A > 0 ) THEN
-                State_Diag%DryDepVelForALT1(I,J,A) = DVZ
-             ENDIF
-          ENDIF
-
-          ! Free pointer
-          SpcInfo => NULL()
+!          ! Archive dry dep velocity for diagnostics in [cm/s]
+!          IF ( State_Diag%Archive_DryDepVel ) THEN
+!             S = State_Diag%Map_DryDepVel%id2slot(D)
+!             IF ( S > 0 ) THEN 
+!                State_Diag%DryDepVel(I,J,S) = DVZ
+!             ENDIF
+!          ENDIF
+!          
+!          ! Archive dry dep velocity [cm/s] only for those species
+!          ! that are requested at a given altitude (e.g. 10m)
+!          IF ( State_Diag%Archive_DryDepVelForALT1 ) THEN
+!             IF ( A > 0 ) THEN
+!                State_Diag%DryDepVelForALT1(I,J,A) = DVZ
+!             ENDIF
+!          ENDIF
+ 
        ENDDO
-    ENDDO
+       ENDDO
+    ! Free pointer
+    SpcInfo => NULL()
     ENDDO
     !$OMP END PARALLEL DO
+#endif
+
+    !### Debug
+    IF ( Input_Opt%LPRT .and. Input_Opt%amIRoot ) THEN
+       CALL DEBUG_MSG( '### DO_DRYDEP: after dry dep' )
+    ENDIF
+
+  END SUBROUTINE DO_DRYDEP
+!EOC
+!EOC
+!------------------------------------------------------------------------------
+!                  GEOS-Chem Global Chemical Transport Model                  !
+!------------------------------------------------------------------------------
+!BOP
+  SUBROUTINE UPDATE_DRYDEPFREQ ( A, B )
+    REAL(f8), INTENT(IN)  :: A 
+    REAL(f8), INTENT(OUT) :: B 
+
+    REAL(f8) :: C
+  
+    C = 2*A
+    B = A+C
 
   END SUBROUTINE UPDATE_DRYDEPFREQ
 !EOC
