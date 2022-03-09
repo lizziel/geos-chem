@@ -60,7 +60,7 @@
   !=========================================================================
   CALL MAPL_GetPointer( INTSTATE, Ptr3D, 'H2O2AfterChem', notFoundOK=.TRUE., __RC__ ) 
   IF ( ASSOCIATED(Ptr3D) .AND. ASSOCIATED(State_Chm%H2O2AfterChem) ) THEN
-     Ptr3D(:,:,LM:1:-1) = State_Chm%H2O2AfterChem(:,:,LM:1:-1)
+     Ptr3D(:,:,LM:1:-1) = State_Chm%H2O2AfterChem
   ENDIF
   Ptr3D => NULL()
 
