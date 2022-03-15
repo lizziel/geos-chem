@@ -6820,9 +6820,10 @@ CONTAINS
           INQUIRE( FILE=ifile, EXIST=HasFile )
           IF ( HasFile ) THEN
              ! Try reading current time stamp on file 
+             VarName = ANAO3VAR
              s = 0
              call ESMF_TimeSet(fileTime, yy=yy, mm=mm, dd=dd, h=h, m=m, s=s)
-             VarBundle =  MAPL_SimpleBundleRead ( TRIM(ifile), 'GCCAnaO3', grid, fileTime, RC=STATUS )
+             VarBundle =  MAPL_SimpleBundleRead ( TRIM(ifile), 'GCCAnaO3', grid, fileTime, only_vars=TRIM(VarName), RC=STATUS )
              ! Fall back if this didn't work: 
              IF ( RC /= ESMF_SUCCESS ) THEN
                 ! If error mode is 0 or 1, stop with error
@@ -6850,11 +6851,10 @@ CONTAINS
                    h  = nhms/10000
                    m  = (nhms- h*10000) / 100
                    s  = nhms - (10000*h  +  m*100)
-                   VarBundle =  MAPL_SimpleBundleRead ( TRIM(ifile), 'GCCAnaO3', grid, fileTime, __RC__ )
+                   VarBundle =  MAPL_SimpleBundleRead ( TRIM(ifile), 'GCCAnaO3', grid, fileTime, only_vars=TRIM(VarName), __RC__ )
                 ENDIF
              ENDIF
              ! Read variable 
-             VarName =  ANAO3VAR
              VarID   =  MAPL_SimpleBundleGetIndex ( VarBundle, trim(VarName), 3, RC=STATUS, QUIET=.TRUE. )
              ANAO3   => VarBundle%r3(VarID)%q
              IF ( am_I_Root ) WRITE(*,*) 'Use analysis ozone ('//TRIM(ANAO3VAR)//', assumed units='//TRIM(ANAO3VARUNIT)//') from '//TRIM(ifile)
