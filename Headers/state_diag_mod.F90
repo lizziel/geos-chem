@@ -298,6 +298,11 @@ MODULE State_Diag_Mod
      REAL(f4),           POINTER :: NOxTau(:,:,:)
      LOGICAL                     :: Archive_NOxTau
 
+#if defined (MODEL_GEOS)
+     REAL(f4),           POINTER :: TropNOxTau(:,:)
+     LOGICAL                     :: Archive_TropNOxTau
+#endif
+
      !%%%%% Aerosol characteristics %%%%%
 
      REAL(f4),           POINTER :: AerHygGrowth(:,:,:,:)
@@ -1332,6 +1337,11 @@ CONTAINS
 
     State_Diag%NOxTau                              => NULL()
     State_Diag%Archive_NOxTau                      = .FALSE.
+
+#if defined (MODEL_GEOS)
+    State_Diag%TropNOxTau                          => NULL()
+    State_Diag%Archive_TropNOxTau                  = .FALSE.
+#endif
 
     !%%%%% Aerosol hygroscopic growth diagnostics %%%%%
 
@@ -4063,6 +4073,29 @@ CONTAINS
           RETURN
        ENDIF
 
+#if defined (MODEL_GEOS)
+       !--------------------------------------------------------------------
+       ! Trop. NOx lifetime 
+       !--------------------------------------------------------------------
+       diagID  = 'TropNOxTau'
+       CALL Init_and_Register(                                               &
+            Input_Opt      = Input_Opt,                                      &
+            State_Chm      = State_Chm,                                      &
+            State_Diag     = State_Diag,                                     &
+            State_Grid     = State_Grid,                                     &
+            DiagList       = Diag_List,                                      &
+            TaggedDiagList = TaggedDiag_List,                                &
+            Ptr2Data       = State_Diag%TropNOxTau,                          &
+            archiveData    = State_Diag%Archive_TropNOxTau,                  &
+            diagId         = diagId,                                         &
+            RC             = RC                                             )
+       IF ( RC /= GC_SUCCESS ) THEN
+          errMsg = TRIM( errMsg_ir ) // TRIM( diagId )
+          CALL GC_Error( errMsg, RC, thisLoc )
+          RETURN
+       ENDIF
+#endif
+
        !--------------------------------------------------------------------
        ! J-Values (instantaneous values)
        !--------------------------------------------------------------------
@@ -4836,7 +4869,7 @@ CONTAINS
        ! being requested as diagnostic output when the corresponding
        ! array has not been allocated.
        !-------------------------------------------------------------------
-       DO N = 1, 33
+       DO N = 1, 34
           ! Select the diagnostic ID
           SELECT CASE( N )
              CASE( 1  )
@@ -4905,6 +4938,8 @@ CONTAINS
                 diagID = 'KppSmDecomps'
              CASE( 33 )
                 diagID = 'NOxTau'
+             CASE( 34 )
+                diagID = 'TropNOxTau'
           END SELECT
 
           ! Exit if any of the above are in the diagnostic list
@@ -9023,6 +9058,13 @@ CONTAINS
                    RC       = RC                                            )
     IF ( RC /= GC_SUCCESS ) RETURN
 
+#if defined (MODEL_GEOS)
+    CALL Finalize( diagId   = 'TropNOxTau',                                &
+                   Ptr2Data = State_Diag%NOxTau,                             &
+                   RC       = RC                                            )
+    IF ( RC /= GC_SUCCESS ) RETURN
+#endif
+
     CALL Finalize( diagId   = 'UvFluxDiffuse',                               &
                    Ptr2Data = State_Diag%UvFluxDiffuse,                      &
                    mapData  = State_Diag%Map_UvFluxDiffuse,                  &
@@ -10573,6 +10615,13 @@ CONTAINS
        IF ( isDesc    ) Desc  = 'NOx (NO+NO2+NO3+2xN2O5+ClNO2+HNO2+HNO4) lifetime'
        IF ( isUnits   ) Units = 'h'
        IF ( isRank    ) Rank  = 3
+
+#if defined ( MODEL_GEOS )
+    ELSE IF ( TRIM( Name_AllCaps ) == 'TROPNOXTAU' ) THEN
+       IF ( isDesc    ) Desc  = 'Tropospheric NOx (NO+NO2+NO3+2xN2O5+ClNO2+HNO2+HNO4) lifetime'
+       IF ( isUnits   ) Units = 'h'
+       IF ( isRank    ) Rank  = 2
+#endif
 
     ELSE IF ( TRIM( Name_AllCaps ) == 'UVFLUXDIFFUSE' ) THEN
        IF ( isDesc    ) Desc  = 'Diffuse UV flux in bin'

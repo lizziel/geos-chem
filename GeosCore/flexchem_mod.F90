@@ -208,7 +208,13 @@ CONTAINS
     ! OH reactivity and KPP reaction rate diagnostics
     REAL(fp)               :: OHreact
     REAL(dp)               :: Vloc(NVAR), Aout(NREACT), Vdotout(NVAR)
-    REAL(f4)               :: NOxTau,     NOxConc
+#if defined( MODEL_GEOS )
+    ! OH reactivity
+    REAL(f4)               :: NOxTau, NOxConc, NOx_weight, NOx_tau_weighted
+    REAL(f4)               :: TROP_NOx_Tau
+    REAL(f4)               :: TROPv_NOx_tau(State_Grid%NX,State_Grid%NY)
+    REAL(f4)               :: TROPv_NOx_mass(State_Grid%NX,State_Grid%NY)
+#endif
 
     ! Objects
     TYPE(DgnMap), POINTER :: mapData => NULL()
@@ -282,6 +288,14 @@ CONTAINS
        CALL Timer_End  ( "=> FlexChem",     RC ) ! started in Do_Chemistry
        CALL Timer_Start( "=> Aerosol chem", RC )
     ENDIF
+
+#if defined( MODEL_GEOS )
+    IF ( State_Diag%Archive_TropNOxTau ) THEN
+       State_Diag%TropNOxTau(:,:) = 0.0_f4
+       TROPv_NOx_mass(:,:) = 0.0_f4 
+       TROPv_NOx_tau(:,:)  = 0.0_f4
+    ENDIF
+#endif
 
     !=======================================================================
     ! Get concentrations of aerosols in [kg/m3]
@@ -606,7 +620,9 @@ CONTAINS
     !$OMP PRIVATE( SpcID,    KppID,    F,       P,         Vloc             )&
     !$OMP PRIVATE( Aout,     Thread,   RC,      S,         LCH4             )&
     !$OMP PRIVATE( OHreact,  PCO_TOT,  PCO_CH4, PCO_NMVOC, Vdotout          )&
-    !$OMP PRIVATE( NOxTau,   NOxConc                                        )&
+#if defined( MODEL_GEOS )
+    !$OMP PRIVATE( NOxTau,   NOxConc, NOx_weight, NOx_tau_weighted          )&
+#endif
     !$OMP COLLAPSE( 3                                                       )&
     !$OMP SCHEDULE( DYNAMIC, 24                                             )
     DO L = 1, State_Grid%NZ
@@ -1149,23 +1165,40 @@ CONTAINS
 #endif
 #endif
 
+#if defined( MODEL_GEOS )
        !--------------------------------------------------------------------
        ! Archive NOx lifetime [h]
        !--------------------------------------------------------------------
-       IF ( State_Diag%Archive_NoxTau ) THEN
-          CALL Fun( VAR, FIX, RCONST, Vloc, Aout=Aout, Vdotout=Vdotout )
+       IF ( State_Diag%Archive_TropNOxTau ) THEN
+          CALL Fun( VAR, FIX, RCONST, Vloc, Vdotout=Vdotout )
           NOxTau = Vdotout(ind_NO) + Vdotout(ind_NO2) + Vdotout(ind_NO3)         &
                  + 2.*Vdotout(ind_N2O5) + Vdotout(ind_ClNO2) + Vdotout(ind_HNO2) &
                  + Vdotout(ind_HNO4)
+!
           NOxConc = C(ind_NO) + C(ind_NO2) + C(ind_NO3) + 2.*C(ind_N2O5)         &
                   + C(ind_ClNO2) + C(ind_HNO2) + C(ind_HNO4)
-          NoxTau = ( NOxConc / (-1.0_f4*NOxTau) ) / 3600.0_f4
-          IF ( NoxTau > 0.0_f4 ) THEN
-             State_Diag%NOxTau(I,J,L) = min(1.0e10_f4,max(1.0e-10_f4,NOxTau))
+
+          NOx_weight = ( NOxConc )*State_Met%AIRDEN(I,J,L)*State_Met%DELP_DRY(I,J,L)
+!
+          NOx_tau_weighted = ( NOxConc / ( -1.0_f4*NOxTau*3600.0_f4 ) )*NOx_weight
+
+!       Can i/should i add the addition to get the 2D diagnostic here? 
+          IF ( State_Met%InTroposphere(I,J,L) ) THEN
+            TROPv_NOx_mass(I,J) = TROPv_NOx_mass(I,J) + NOx_weight
+            TROPv_NOx_tau(I,J)  = TROPv_NOx_tau(I,J) + NOx_tau_weighted
+          ENDIF
+
+          IF ( ABS(NOx_tau_weighted) < 1.0e8 ) THEN
+            NOx_tau_weighted = ( NINT(NOx_tau_weighted)*1.0e6 )*1.0e-6_f4
           ELSE
-             State_Diag%NOxTau(I,J,L) = max(-1.0e10_f4,min(-1.0e-10_f4,NOxTau))
+             IF ( NOx_tau_weighted > 0.0 ) THEN
+                NOx_tau_weighted = 1.0e8
+             ELSE
+                NOx_tau_weighted = -1.0e8
+             ENDIF
           ENDIF
        ENDIF
+#endif
 
        !====================================================================
        ! HISTORY (aka netCDF diagnostics)
@@ -1237,7 +1270,7 @@ CONTAINS
        ! inverse of its life-time. In a crude ad-hoc approach, manually add
        ! all OH reactants (ckeller, 9/20/2017)
        !====================================================================
-       IF ( State_Diag%Archive_OHreactivity ) THEN
+       IF ( State_Diag%Archive_OHreactivity ) THEN 
           IF ( Input_Opt%useTimers ) THEN
              CALL Timer_Start( "  -> OH reactivity diag", RC, &
                                InLoop=.TRUE., ThreadNum=Thread )
@@ -1269,6 +1302,14 @@ CONTAINS
        CALL Timer_Sum_Loop( "  -> Prod/loss diags",     RC )
        CALL Timer_Sum_Loop( "  -> OH reactivity diag",  RC )
     ENDIF
+
+#if defined( MODEL_GEOS )
+    IF ( State_Diag%Archive_TropNOxTau ) THEN
+       WHERE (TROPv_NOx_mass > 0.0_f4 ) 
+          State_Diag%TropNOxTau = TROPv_NOx_tau / TROPv_NOx_mass
+       END WHERE
+    ENDIF
+#endif
 
     !=======================================================================
     ! Archive OH, HO2, O1D, O3P concentrations after FlexChem solver
