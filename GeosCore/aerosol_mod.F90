@@ -97,7 +97,7 @@ MODULE AEROSOL_MOD
   ! NOTE: Increasing value of NRHAER in CMN_SIZE_Mod.F90 (e.g. if there is
   ! a new hygroscopic species) requires manual update of this mapping
   ! (ewl, 1/23/17)
-  INTEGER :: Map_NRHAER(5)
+  INTEGER :: Map_NRHAER(6)
 
   
 CONTAINS
@@ -2544,9 +2544,11 @@ CONTAINS
                 Map_NRHAER(N) = 4
              CASE ( 'SALC' )
                 Map_NRHAER(N) = 5
+             CASE ( 'dBrC1', 'dBrC2' )
+                Map_NRHAER(N) = 6
              CASE DEFAULT
                 ErrMsg = 'WARNING: aerosol diagnostics not defined' // &
-                         ' for NRHAER greater than 5!'
+                         ' for NRHAER greater than 6!'
                 CALL GC_ERROR( ErrMsg, RC, 'Init_Aerosol in aerosol_mod.F90' )
                 SpcInfo => NULL()
                 RETURN

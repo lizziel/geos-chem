@@ -203,6 +203,7 @@ MODULE CARBON_MOD
 
   REAL(fp), ALLOCATABLE :: BCCONV(:,:,:)
   REAL(fp), ALLOCATABLE :: OCCONV(:,:,:)
+  REAL(fp), ALLOCATABLE :: DBRCCONV(:,:,:) ! XW 01/03/24
   REAL(fp), ALLOCATABLE :: TCOSZ(:,:)
   REAL(fp), ALLOCATABLE :: GLOB_DARO2(:,:,:,:,:) ! Diagnostic (dkh, 11/10/06)
 
@@ -272,7 +273,7 @@ MODULE CARBON_MOD
   INTEGER :: id_TSOG3,   id_XYLE,   id_LBRO2N, id_LBRO2H, id_LTRO2N
   INTEGER :: id_LTRO2H,  id_LXRO2N, id_LXRO2H, id_LNRO2N, id_LNRO2H
   INTEGER :: id_LISOPOH, id_LISOPNO3
-  INTEGER :: id_SOAS,    id_SOAP
+  INTEGER :: id_SOAS,    id_SOAP,   id_DBRC1,  id_DBRC2
 
 #ifdef APM
   REAL(fp), ALLOCATABLE :: BCCONVNEW(:,:,:)
@@ -544,6 +545,34 @@ CONTAINS
           CALL DEBUG_MSG( '### CHEMCARBON: a CHEM_OCPI' )
        ENDIF
     ENDIF
+
+    ! Chemistry for fresh dBrC, XW 1/3/24
+    IF ( id_DBRC1 > 0 ) THEN
+       CALL CHEM_DBRC1( Input_Opt  = Input_Opt,                              &
+                       State_Chm  = State_Chm,                               &
+                       State_Met  = State_Met,                               &
+                       State_Diag = State_Diag,                              &
+                       State_Grid = State_Grid,                              &
+                       spcId      = id_DBRC1,                                &
+                       RC         = RC                                      )
+       IF ( Input_Opt%Verbose ) THEN
+          CALL DEBUG_MSG( '### CHEMCARBON: a CHEM_DBRC1' )
+       ENDIF
+    ENDIF
+
+    ! Chemistry for aged dBrC, XW 1/3/24
+    IF ( id_DBRC2 > 0 ) THEN
+       CALL CHEM_DBRC2( Input_Opt  = Input_Opt,                               &
+                       State_Chm  = State_Chm,                               &
+                       State_Diag = State_Diag,                              &
+                       State_Grid = State_Grid,                              &
+                       spcId      = id_DBRC2,                                 &
+                       RC         = RC                                      )
+       IF ( Input_Opt%Verbose ) THEN
+          CALL DEBUG_MSG( '### CHEMCARBON: a CHEM_DBRC2' )
+       ENDIF
+    ENDIF
+
 
 #ifdef APM
     !=====================================================================
@@ -1296,6 +1325,212 @@ CONTAINS
    TC => NULL()
 
  END SUBROUTINE CHEM_OCPO
+!EOC
+!------------------------------------------------------------------------------
+!                  GEOS-Chem Global Chemical Transport Model                  !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !IROUTINE: chem_dbrc1
+!
+! !DESCRIPTION: Subroutine CHEM\_DBRC1 converts fresh dBrC to aged dBrC
+!  and calculates the dry deposition of fresh dBrC.
+!\\
+!\\
+! !INTERFACE:
+!
+ SUBROUTINE CHEM_DBRC1( Input_Opt,  State_Chm, State_Met, State_Diag,    &
+                       State_Grid, spcId,     RC                            )
+!
+! !USES:
+!
+   USE ErrCode_Mod
+   USE Input_Opt_Mod,  ONLY : OptInput
+   USE State_Chm_Mod,  ONLY : ChmState
+   USE State_Met_Mod,  ONLY : MetState
+   USE State_Diag_Mod, ONLY : DgnState
+   USE State_Grid_Mod, ONLY : GrdState
+   USE TIME_MOD,       ONLY : GET_TS_CHEM
+!
+! !INPUT PARAMETERS:
+!
+   TYPE(OptInput), INTENT(IN)    :: Input_Opt    ! Input Options object
+   TYPE(GrdState), INTENT(IN)    :: State_Grid   ! Grid State object
+   TYPE(MetState), INTENT(IN)    :: State_Met    ! Meteorology state object
+   INTEGER,        INTENT(IN)    :: spcId        ! DBRC1 species Id
+
+!
+! !INPUT/OUTPUT PARAMETERS:
+!
+   TYPE(ChmState), INTENT(INOUT) :: State_Chm    ! Chemistry state object
+   TYPE(DgnState), INTENT(INOUT) :: State_Diag   ! Diagnostics State object
+!
+! !OUTPUT PARAMETERS:
+!
+   INTEGER,        INTENT(OUT)   :: RC           ! Success or failure?
+!
+! !REVISION HISTORY:
+!  03 Jan 2024 - X. Wang - Initial version
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+!
+! !LOCAL VARIABLES:
+!
+   ! Scalars
+   INTEGER              :: I,      J,   L
+   REAL(fp)             :: DTCHEM, KDBRC, TC0, CNEW, RKT, NO3
+
+   REAL(fp),  POINTER   :: TC(:,:,:)
+!
+   !=================================================================
+   ! CHEM_DBRC1 begins here!
+   !=================================================================
+
+   ! Assume success
+   RC        =  GC_SUCCESS
+
+   ! Initialize
+   DTCHEM    =  GET_TS_CHEM()
+   DBRCCONV  =  0e+0_fp
+   TC        => State_Chm%Species(spcId)%Conc
+
+   !$OMP PARALLEL DO       &
+   !$OMP DEFAULT( SHARED ) &
+   !$OMP PRIVATE( I, J, L, TC0, RKT, CNEW, NO3, KDBRC ) &
+   !$OMP SCHEDULE( DYNAMIC )
+   DO L = 1, State_Grid%NZ
+   DO J = 1, State_Grid%NY
+   DO I = 1, State_Grid%NX
+
+      ! Aging rate
+      NO3     =  GET_NO3( I, J, L, Input_Opt, State_Chm, State_Met ) !molec/cm3
+      KDBRC     =  NO3 / 1.4e+14_fp
+
+      ! Initial dBrC [kg]
+      TC0  = TC(I,J,L)
+
+      ! Amount of DBRC1 left after chemistry and drydep [kg]
+      RKT  = KDBRC * DTCHEM
+      CNEW = TC0 * EXP( -RKT )
+
+      ! Prevent underflow condition
+      IF ( CNEW < SMALLNUM ) CNEW = 0e+0_fp
+
+      ! Amount of DBRC1 converted to DBRC2 [kg/timestep]
+      DBRCCONV(I,J,L) =  TC0 - CNEW 
+
+      ! Store modified DBRC concentration back in species array
+      TC(I,J,L) = CNEW
+
+   ENDDO
+   ENDDO
+   ENDDO
+   !$OMP END PARALLEL DO
+
+   TC => NULL()
+
+ END SUBROUTINE CHEM_DBRC1
+!EOC
+!------------------------------------------------------------------------------
+!                  GEOS-Chem Global Chemical Transport Model                  !
+!------------------------------------------------------------------------------
+!BOP
+!
+! !IROUTINE: chem_dbrc2
+!
+! !DESCRIPTION: Subroutine CHEM\_DBRC2 calculates dry deposition of
+!  aged dBrC.
+!\\
+!\\
+! !INTERFACE:
+!
+ SUBROUTINE CHEM_DBRC2( Input_Opt,  State_Chm, State_Diag,                    &
+                       State_Grid, spcId,     RC )
+!
+! !USES:
+!
+   USE ErrCode_Mod
+   USE Input_Opt_Mod,  ONLY : OptInput
+   USE State_Chm_Mod,  ONLY : ChmState
+   USE State_Diag_Mod, ONLY : DgnState
+   USE State_Grid_Mod, ONLY : GrdState
+   USE TIME_MOD,       ONLY : GET_TS_CHEM
+!
+! !INPUT PARAMETERS:
+!
+   TYPE(OptInput), INTENT(IN)    :: Input_Opt    ! Input Options object
+   TYPE(GrdState), INTENT(IN)    :: State_Grid   ! Grid State object
+   INTEGER,        INTENT(IN)    :: spcId        ! DBRC2 species Id\
+!
+! !INPUT/OUTPUT PARAMETERS:
+!
+   TYPE(ChmState), INTENT(INOUT) :: State_Chm    ! Chemistry state object
+   TYPE(DgnState), INTENT(INOUT) :: State_Diag   ! Diagnostics State object
+!
+! !OUTPUT PARAMETERS:
+!
+   INTEGER,        INTENT(OUT)   :: RC           ! Success or failure?
+!
+! !REVISION HISTORY:
+!  03 Jan 2024 - X. Wang - Initial version
+!EOP
+!------------------------------------------------------------------------------
+!BOC
+!
+! !LOCAL VARIABLES:
+!
+   ! Scalars
+   INTEGER  :: I,   J,     L
+   REAL(fp) :: TC0, CNEW, CCV
+
+   ! Pointers
+   REAL(fp), POINTER :: TC(:,:,:)
+
+   !=================================================================
+   ! CHEM_DBRC2 begins here!
+   !=================================================================
+
+   ! Assume success
+   RC =  GC_SUCCESS
+   TC => State_Chm%Species(spcId)%Conc
+
+   !$OMP PARALLEL DO       &
+   !$OMP DEFAULT( SHARED ) &
+   !$OMP PRIVATE( I, J, L, TC0, CCV, CNEW ) &
+   !$OMP SCHEDULE( DYNAMIC )
+   DO L = 1, State_Grid%NZ
+   DO J = 1, State_Grid%NY
+   DO I = 1, State_Grid%NX
+
+      ! Initial aged dBrC [kg]
+      TC0 = TC(I,J,L)
+
+      ! Aged dBrC that used to be fresh [kg]
+      CCV = DBRCCONV(I,J,L)
+
+      ! Add the amount of converted OCPO to OCPI
+      CNEW = TC0 + CCV
+
+      ! Prevent underflow condition
+      IF ( CNEW < SMALLNUM ) CNEW = 0e+0_fp
+
+      ! Store modified concentration back in species array [kg]
+      TC(I,J,L) = CNEW
+
+   ENDDO
+   ENDDO
+   ENDDO
+   !$OMP END PARALLEL DO
+
+   !=================================================================
+   ! Zero OCCONV array for next timestep
+   !=================================================================
+   DBRCCONV = 0e+0_fp
+
+   TC => NULL()
+
+ END SUBROUTINE CHEM_DBRC2
 !EOC
 !------------------------------------------------------------------------------
 !                  GEOS-Chem Global Chemical Transport Model                  !
@@ -7676,6 +7911,8 @@ CONTAINS
    id_OH       = IND_('OH'      )
    id_OCPO     = IND_('OCPO'    )
    id_OCPI     = IND_('OCPI'    )
+   id_DBRC1    = IND_('dBrC1'   )
+   id_DBRC2    = IND_('dBrC2'   )
    id_OPOA1    = IND_('OPOA1'   )
    id_OPOG1    = IND_('OPOG1'   )
    id_OPOA2    = IND_('OPOA2'   )
@@ -7756,6 +7993,10 @@ CONTAINS
    ALLOCATE( OCCONV(State_Grid%NX,State_Grid%NY,State_Grid%NZ), STAT=AS )
    IF ( AS /= 0 ) CALL ALLOC_ERR( 'OCCONV' )
    OCCONV = 0e+0_fp
+
+   ALLOCATE( DBRCCONV(State_Grid%NX,State_Grid%NY,State_Grid%NZ), STAT=AS )
+   IF ( AS /= 0 ) CALL ALLOC_ERR( 'DBRCCONV' )
+   DBRCCONV = 0e+0_fp
 
    ! semivolpoa2: for POA emissions (hotp 2/27/09)
    ! Store POG1 and POG2 separately (mps, 1/14/16)
@@ -7949,6 +8190,7 @@ CONTAINS
    !=================================================================
    IF ( ALLOCATED( BCCONV        ) ) DEALLOCATE( BCCONV        )
    IF ( ALLOCATED( OCCONV        ) ) DEALLOCATE( OCCONV        )
+   IF ( ALLOCATED( DBRCCONV      ) ) DEALLOCATE( DBRCCONV      )
    IF ( ALLOCATED( TCOSZ         ) ) DEALLOCATE( TCOSZ         )
    IF ( ALLOCATED( GLOB_DARO2    ) ) DEALLOCATE( GLOB_DARO2    )
    IF ( ALLOCATED( POAEMISS      ) ) DEALLOCATE( POAEMISS      )
