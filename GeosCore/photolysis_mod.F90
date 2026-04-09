@@ -838,7 +838,7 @@ CONTAINS
     MIEDX => State_Chm%Phot%MIEDX
 
     ! Taken from aerosol_mod.F
-    IND = (/22,29,36,43,50/)
+    IND = (/22,29,36,43,50,57/) ! add d-BrC index, MH 3/21/26
 
     DO I=1,AN_
        MIEDX(I) = 0

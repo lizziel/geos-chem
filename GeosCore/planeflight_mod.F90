@@ -825,7 +825,11 @@ CONTAINS
            ENDIF
 
          ENDIF
-
+       !===========================================================
+       ! OH reactivity
+       !===========================================================
+       CASE ( 'OHR_' )
+          PVAR(N)   = 99999  
        !===========================================================
        ! Species: listed as "O3", "C2H6", etc.
        ! PVAR offset: 0
@@ -1736,17 +1740,20 @@ CONTAINS
              SELECT CASE ( PVAR(V) )
 
              !---------------------------------------------------------------
-             ! GEOS-Chem Chemical species [molec/cm3]
+             ! GEOS-Chem Chemical species [mol/mol dry] or [molec/cm3]
              !---------------------------------------------------------------
-             CASE ( 1:996)
+             CASE ( 1:996 )
 
                 ! Only archive where chemistry is done
                 IF ( State_Met%InChemGrid(I,J,L) ) THEN
 
                    ! Species concentration [v/v dry] -> [molec/cm3]
                    N       = PVAR(V)
-                   VARI(V) = Spc(N)%Conc(I,J,L) / AIRMW * State_Met%AIRDEN(I,J,L) &
-                             * AVO * 1.0e-9_fp
+                   VARI(V) = Spc(N)%Conc(I,J,L)                              &
+                           / AIRMW                                           &
+                           * State_Met%AIRDEN(I,J,L)                         &
+                           * AVO                                             &
+                           * 1.0e-3_fp
                 ENDIF
 
              !---------------------------------------------------------------
@@ -2261,7 +2268,7 @@ CONTAINS
              !---------------------------------------------------------------
              ! Photolysis reaction rates
              !---------------------------------------------------------------
-             CASE ( 30001:99999 )
+             CASE ( 30001:99998 )
 
                ! Increment reaction count
                R = R + 1
@@ -2272,6 +2279,14 @@ CONTAINS
                ! Extract this reaction number from the state diag
                ! NOTE: JValues collection must have been requested in HISTORY.rc
                VARI(V) = State_Diag%JVal(I,J,L, NUM )
+
+             !---------------------------------------------------------------
+             ! OH reactivity
+             !---------------------------------------------------------------
+             CASE ( 99999 )
+
+               ! NOTE: OHreactivity collection must have been requested in HISTORY.rc
+               VARI(V) = State_Diag%OHreactivity(I,J,L )
 
              !---------------------------------------------------------------
              ! GEOS-CHEM advected species [v/v dry]

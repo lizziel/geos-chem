@@ -221,7 +221,7 @@ CONTAINS
 !
     CHARACTER(LEN=255) :: ErrMsg, ThisLoc
     INTEGER            :: A, I, J, L, K, N, S, MaxLev, RH_ind
-    INTEGER            :: SO4_ind, BC_ind, OC_ind, SALA_ind, SALC_ind
+    INTEGER            :: SO4_ind, BC_ind, OC_ind, SALA_ind, SALC_ind, dBrC_ind
     INTEGER            :: S_rh0, S_rhx, K_rh0, K_rhx, ind_1000
     REAL(8)            :: MW_g, BoxHt, Delta_P, IWC, LWC
     REAL(8)            :: FRAC, RAA_eff, QAA_eff, SAA_eff
@@ -315,10 +315,19 @@ CONTAINS
     REAL(fp) :: H2O_kgkgdry
     REAL(fp) :: MW_kg
 
+    ! TEST 4/3/26
+    REAL(fp) :: OCPO_exBrC
+    REAL(fp) :: OCPISOA_exBrC
+    REAL(fp) :: dBrC1_kgm3
+    REAL(fp) :: dBrC2_kgm3
+
+
     ! Species ids
     INTEGER, SAVE :: id_H2O
     INTEGER, SAVE :: id_O3
     INTEGER, SAVE :: id_SO4
+    INTEGER, SAVE :: id_DBRC1
+    INTEGER, SAVE :: id_DBRC2
 
     ! Index for Cloud-J prints if GEOS-Chem verbose is on
     INTEGER :: I_PRT, J_PRT
@@ -364,6 +373,7 @@ CONTAINS
     OC_ind   = 3
     SALA_ind = 4
     SALC_ind = 5
+    dBrC_ind = 6 ! add d-BrC index, MH 3/21/26
 
     ! Relative humidities in FJX_spec-aer.dat
     RH_lut(1) = 0.d0
@@ -392,6 +402,8 @@ CONTAINS
        id_H2O  = Ind_('H2O')
        id_O3   = Ind_('O3')
        id_SO4  = Ind_('SO4')
+       id_DBRC1 = Ind_('dBrC1')
+       id_DBRC2 = Ind_('dBrC2')
        IF ( id_O3 <= 0 ) THEN
           ErrMsg = 'O3 is not a defined species but is required for Cloud-J photolysis!'
           CALL GC_Error( ErrMsg, RC, ThisLoc )
@@ -671,7 +683,7 @@ CONTAINS
                 IF ( Input_Opt%LSULF .AND. State_Met%InTroposphere(I,J,L) ) THEN
 
                    ! Get indexes to optical property LUT
-                   S_rh0 = 3 + NDUST + NRHAER*(SO4_ind-1) + 1  ! SO4 index for RH=0 in NDXAER
+                   S_rh0 = 3 + NDUST + NRH*(SO4_ind-1) + 1  ! SO4 index for RH=0 in NDXAER
                    S_rhx = S_rh0 + RH_ind - 1  ! Sulfate index for this RH
                    K_rh0 = NDXAER(L,S_rh0)     ! index for RH=0 in FJX_spec-aer.dat
                    K_rhx = NDXAER(L,S_rhx)     ! index for this RH in FJX_spec-aer.dat
@@ -707,7 +719,7 @@ CONTAINS
                    !----------------------------------------------------
 
                    ! Get indexes to optical property LUT
-                   S_rh0 = 3 + NDUST + NRHAER*(BC_ind-1) + 1  ! BC index for RH=0 in NDXAER
+                   S_rh0 = 3 + NDUST + NRH*(BC_ind-1) + 1  ! BC index for RH=0 in NDXAER
                    S_rhx = S_rh0 + RH_ind - 1  ! BC index for this RH
                    K_rh0 = NDXAER(L,S_rh0)     ! index for RH=0 in FJX_spec-aer.dat
                    K_rhx = NDXAER(L,S_rhx)     ! index for this RH in FJX_spec-aer.dat
@@ -756,7 +768,7 @@ CONTAINS
                    !----------------------------------------------------
 
                    ! Get indexes to optical property LUT
-                   S_rh0 = 3 + NDUST + NRHAER*(OC_ind-1) + 1  ! OC index for RH=0 in NDXAER
+                   S_rh0 = 3 + NDUST + NRH*(OC_ind-1) + 1  ! OC index for RH=0 in NDXAER
                    S_rhx = S_rh0 + RH_ind - 1  ! OC index for this RH
                    K_rh0 = NDXAER(L,S_rh0)     ! index for RH=0 in FJX_spec-aer.dat
                    K_rhx = NDXAER(L,S_rhx)     ! index for this RH in FJX_spec-aer.dat
@@ -775,11 +787,58 @@ CONTAINS
                    R_interp_factor = RAA_eff / RAA(K_rhx)
                    Q_interp_factor = QAA_eff / QAA(ind_1000,K_rhx)
 
+                   ! Remove dBrC subset from OA so it is not counted twice optically
+                   dBrC1_kgm3 = 0.d0
+                   dBrC2_kgm3 = 0.d0
+
+                   IF ( id_DBRC1 > 0 ) THEN
+                      dBrC1_kgm3 = State_Chm%Species(id_DBRC1)%Conc(I,J,L) / State_Met%AIRVOL(I,J,L)
+                   ENDIF
+
+                   IF ( id_DBRC2 > 0 ) THEN
+                      dBrC2_kgm3 = State_Chm%Species(id_DBRC2)%Conc(I,J,L) / State_Met%AIRVOL(I,J,L)
+                   ENDIF
+
+                   ! Assume dBrC1 is part of hydrophobic OC and dBrC2 is part of hydrophilic OC
+                   OCPO_exBrC   = MAX( 0.d0, State_Chm%AerMass%OCPO(I,J,L)    - dBrC1_kgm3 )
+                   OCPISOA_exBrC = MAX( 0.d0, State_Chm%AerMass%OCPISOA(I,J,L) - dBrC2_kgm3 )
+
                    ! Set concentration, converting [dry kg/m3] -> [wet g/m2]
-                   AERSP(L,S_rhx) = ( State_Chm%AerMass%OCPO(I,J,L)                 &
-                        + ( State_Chm%AerMass%OCPISOA(I,J,L)                        &
+                   AERSP(L,S_rhx) = ( OCPO_exBrC                              &
+                        + ( OCPISOA_exBrC                                    &
                         * dry_to_wet_factor * Q_interp_factor / R_interp_factor ) ) &
                         * 1.d3 * BoxHt
+
+                   !----------------------------------------------------
+                   ! Dark brown carbon, based on Organic Carbon (mh, 3/21/26)
+                   !----------------------------------------------------
+
+                   ! Get indexes to optical property LUT
+                   S_rh0 = 3 + NDUST + NRH*(dBrC_ind-1) + 1  ! dBrC index for RH=0 in NDXAER
+                   S_rhx = S_rh0 + RH_ind - 1  ! dBrC index for this RH
+                   K_rh0 = NDXAER(L,S_rh0)     ! index for RH=0 in FJX_spec-aer.dat
+                   K_rhx = NDXAER(L,S_rhx)     ! index for this RH in FJX_spec-aer.dat
+
+                   ! Get interpolated effective radius and extinction for RH in this grid box
+                   IF ( RH_ind == NRH ) THEN
+                      RAA_eff = RAA(K_rhx)
+                      QAA_eff = QAA(ind_1000,K_rhx)
+                   ELSE
+                      FRAC = ( State_Met%RH(I,J,L) - RH_lut(RH_ind) ) &
+                             / ( RH_lut(RH_ind+1) - RH_lut(RH_ind) )
+                      RAA_eff = RAA(K_rhx) + FRAC * ( RAA(K_rhx+1) - RAA(K_rhx) )
+                      QAA_eff = QAA(ind_1000,K_rhx) + FRAC * ( QAA(ind_1000,K_rhx+1) - QAA(ind_1000,K_rhx) )
+                   ENDIF
+                   dry_to_wet_factor = ( RAA_eff / RAA(K_rh0) )**3
+                   R_interp_factor = RAA_eff / RAA(K_rhx)
+                   Q_interp_factor = QAA_eff / QAA(ind_1000,K_rhx)
+
+                   ! Set concentration, converting [dry kg/m3] -> [wet g/m2]
+                   AERSP(L,S_rhx) = dBrC1_kgm3                                &
+                        + dBrC2_kgm3 * dry_to_wet_factor *                    &
+                          Q_interp_factor / R_interp_factor
+
+                   AERSP(L,S_rhx) = AERSP(L,S_rhx) * 1.d3 * BoxHt
 
                 ENDIF
 
@@ -794,7 +853,7 @@ CONTAINS
                    !----------------------------------------------------
 
                    ! Get indexes to optical property LUT
-                   S_rh0 = 3 + NDUST + NRHAER*(SALA_ind-1) + 1  ! SALA index for RH=0 in NDXAER
+                   S_rh0 = 3 + NDUST + NRH*(SALA_ind-1) + 1  ! SALA index for RH=0 in NDXAER
                    S_rhx = S_rh0 + RH_ind - 1  ! SALA index for this RH
                    K_rh0 = NDXAER(L,S_rh0)     ! index for RH=0 in FJX_spec-aer.dat
                    K_rhx = NDXAER(L,S_rhx)     ! index for this RH in FJX_spec-aer.dat
@@ -822,7 +881,7 @@ CONTAINS
                    !----------------------------------------------------
 
                    ! Get indexes to optical property LUT
-                   S_rh0 = 3 + NDUST + NRHAER*(SALC_ind-1) + 1  ! SALC index for RH=0 in NDXAER
+                   S_rh0 = 3 + NDUST + NRH*(SALC_ind-1) + 1  ! SALC index for RH=0 in NDXAER
                    S_rhx = S_rh0 + RH_ind - 1  ! SALC index for this RH
                    K_rh0 = NDXAER(L,S_rh0)     ! index for RH=0 in FJX_spec-aer.dat
                    K_rhx = NDXAER(L,S_rhx)     ! index for this RH in FJX_spec-aer.dat
@@ -859,14 +918,14 @@ CONTAINS
              ! depth computed in GEOS-Chem is non-zero.
 
              !  SSA/LBS/STS
-             IF ( State_Chm%Phot%ODAER(I,J,L,State_Chm%Phot%IWV1000,6) > 0._fp ) THEN
-                AERSP(L,36) = State_Chm%Species(id_SO4)%Conc(I,J,L) &
+             IF ( State_Chm%Phot%ODAER(I,J,L,State_Chm%Phot%IWV1000,7) > 0._fp ) THEN
+                AERSP(L,41) = State_Chm%Species(id_SO4)%Conc(I,J,L) &
                      * MW_g / AVO * BoxHt * 1e+6_fp
              ENDIF
 
              !  NAT/ice PSCs
-             IF ( State_Chm%Phot%ODAER(I,J,L,State_Chm%Phot%IWV1000,7) > 0._fp ) THEN
-                AERSP(L,37) = State_Chm%Species(id_SO4)%Conc(I,J,L) &
+             IF ( State_Chm%Phot%ODAER(I,J,L,State_Chm%Phot%IWV1000,8) > 0._fp ) THEN
+                AERSP(L,42) = State_Chm%Species(id_SO4)%Conc(I,J,L) &
                      * MW_g / AVO * BoxHt * 1e+6_fp
              ENDIF
 
@@ -887,8 +946,8 @@ CONTAINS
        !IF ( .NOT. use_oc       ) AERSP(:,21:25) = 0.d0
        !IF ( .NOT. use_sala     ) AERSP(:,26:30) = 0.d0
        !IF ( .NOT. use_salc     ) AERSP(:,31:35) = 0.d0
-       !IF ( .NOT. use_stratso4 ) AERSP(:,36)    = 0.d0
-       !IF ( .NOT. use_psc      ) AERSP(:,37)    = 0.d0
+       !IF ( .NOT. use_stratso4 ) AERSP(:,41)    = 0.d0
+       !IF ( .NOT. use_psc      ) AERSP(:,42)    = 0.d0
 
        !-----------------------------------------------------------------
        ! Set remaining inputs needed for Cloud_JX
